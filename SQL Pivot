@@ -1,0 +1,136 @@
+drop table #kpi
+SELECT d.[BusinessUnitName]
+      ,case when d.[BrandName] = 'Total' and d.kpilevelname like '% NZIO%' then 'NZIO'
+	  when d.[BrandName] = 'Total' and d.kpilevelname like '% DMO%' then 'DMO'
+	  when d.[BrandName] = 'Total' and d.kpilevelname like '% PSO%' then 'PSO'
+	  when d.[BrandName] = 'Total' and d.kpilevelname like '% TSO%' then 'TSO'
+	  when d.[BrandName] = 'Total' and d.kpilevelname like '% FXO%' then 'FXO'
+	  else d.[BrandName] end as BrandName
+     --,d.[KPILevelName]
+      ,d.[KPIGrouping]
+      ,d.[KpiCaption]
+      ,d.[KPITarget]
+      --,d.[KPIDefinition]
+      ,c.[ReportingDate]
+	 , d.[KPIGroupOrder], d.[KPIOrder]
+      ,c.[KpiValue]
+     ,RANK ( ) OVER ( partition by d.businessunitname, d.brandname, d.KPIGrouping, d.KPICaption  order by c.[ReportingDate] ) as month_id
+	 into #kpi
+  FROM [MIS_DM_OCC].[dbo].[Tbl_Summary_KPIDefinition] d
+  inner join [MIS_DM_OCC].[dbo].[Tbl_Summary_KPICalculations] c
+  on d.kpilevelname = c.kpilevelname  
+  
+  
+  where d.reporthierarchy = 'Service Delivery Dashboard'
+  and d.isreported = 1
+  and c.[UpdateFrequency] = 'Monthly'
+  and c.[ReportingDate] between '2014-06-30 00:00:00.000' and '2015-06-30 00:00:00.000'
+  
+  
+  order by d.businessunitname, d.brandname desc, d.[KPIGroupOrder], d.[KPIOrder]
+
+  --select distinct BusinessUnitname, Brandname from #kpi order by 1,2
+
+  --create fixed table with every dates for 13 month window
+  drop table #kpi2
+  select 
+  BusinessUnitName
+,BrandName
+, KPIGrouping
+, KpiCaption
+, KPITarget
+ ,[KPIGroupOrder], [KPIOrder]
+, ReportingDate
+into #kpi2
+  from
+  (
+  SELECT distinct 
+BusinessUnitName
+,BrandName
+, KPIGrouping
+, KpiCaption
+, KPITarget
+ ,[KPIGroupOrder], [KPIOrder]
+from #kpi
+) as names
+cross join
+(
+select distinct
+ReportingDate
+from #kpi
+) as dates
+order by 
+businessunitname 
+,brandname desc 
+,[KPIGroupOrder] 
+,[KPIOrder]
+,ReportingDate
+
+
+
+--merge kpi values into the fixed table #kpi2
+drop table #kpi3
+
+
+
+select
+a.[BusinessUnitName]
+      ,a.[BrandName]
+      ,a.[KPIGrouping]
+      ,a.[KpiCaption]
+      ,a.[KPITarget]
+      ,a.[ReportingDate]
+	 , a.[KPIGroupOrder], a.[KPIOrder]
+      ,b.[KpiValue]
+     ,RANK ( ) OVER ( partition by a.businessunitname, a.brandname, a.KPIGrouping, a.KPICaption  order by a.[ReportingDate] ) as month_id
+	into #kpi3
+from #kpi2 as a
+left join
+#kpi as b
+on 
+a.[BusinessUnitName] = b.[BusinessUnitName]
+      and a.[BrandName] = b.[BrandName]
+      and a.[KPIGrouping] = b.[KPIGrouping]
+      and a.[KpiCaption] = b.[KpiCaption]
+      --and a.[KPITarget] = b.[KPITarget]
+      and a.[ReportingDate] = b.[ReportingDate]
+	 and a.[KPIGroupOrder] = b.[KPIGroupOrder] 
+	 and a.[KPIOrder] = b.[KPIOrder]
+
+--select * from #kpi
+order by businessunitname, brandname desc, [KPIGroupOrder], [KPIOrder]
+
+
+
+-- Pivot table
+SELECT 
+BusinessUnitName
+,BrandName
+, KPIGrouping
+, KpiCaption
+, KPITarget
+, [1], [2], [3], [4], [5], [6], [7] , [8], [9], [10], [11], [12], [13]
+FROM
+(SELECT BusinessUnitName
+,BrandName
+,KPIGrouping
+,KpiCaption
+,KPITarget
+,[KPIGroupOrder]
+, [KPIOrder]
+,KpiValue
+,month_id 
+    FROM #kpi3) AS SourceTable
+PIVOT
+(
+sum(KpiValue)
+FOR month_id IN ([1], [2], [3], [4], [5], [6], [7] , [8], [9], [10], [11], [12], [13])
+) AS PivotTable
+order by businessunitname, brandname desc, [KPIGroupOrder], [KPIOrder]
+;
+
+/*
+select * from #kpi2 where
+-- BusinessUnitName = 'Collections'
+Kpitarget is null
+*/
